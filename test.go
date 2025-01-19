@@ -21,6 +21,7 @@ const (
 )
 
 type Person struct {
+	Id   int    `json:"id"` //- добавление id в структуру
 	Name string `json:"name"`
 	Age  int    `json:"age"`
 }
@@ -42,11 +43,14 @@ func main() {
 		log.Fatalf("Unable to ping database: %v", err)
 	}
 
-	createProductTable(db)
+	createPersonTable(db)
 	fmt.Println("Successfully connected to the database!")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", GetHandler)
+	mux.HandleFunc("/all", func(w http.ResponseWriter, r *http.Request) {
+		AllHandler(w, r, db)
+	})
 	mux.HandleFunc("/post", func(w http.ResponseWriter, r *http.Request) {
 		PostHandler(w, r, db)
 	})
@@ -57,6 +61,32 @@ func main() {
 
 var results []string
 
+func AllHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+	var people = make([]Person, 0)
+
+	results, err := db.Query("SELECT * FROM person;")
+	if err != nil {
+		log.Println("failed to execute query", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	for results.Next() {
+		var p Person
+
+		err = results.Scan(&p.Id, &p.Name, &p.Age)
+		if err != nil {
+			log.Println("failed to scan", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		people = append(people, p)
+	}
+
+	json.NewEncoder(w).Encode(people)
+}
+
 func GetHandler(w http.ResponseWriter, r *http.Request) {
 	jsonBody, err := json.Marshal(results)
 	if err != nil {
@@ -65,34 +95,6 @@ func GetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write(jsonBody)
 }
-
-// func PostHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-// 	if r.Method != http.MethodPost {
-// 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-// 		return
-// 	}
-
-// 	body, err := io.ReadAll(r.Body)
-// 	if err != nil {
-// 		http.Error(w, "Error reading request body", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	results = append(results, string(body))
-
-// 	var person Person
-// 	if err := json.Unmarshal(body, &person); err != nil {
-// 		http.Error(w, "Invalid JSON format", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	pk, err := insertProduct(db, person)
-// 	if err != nil {
-// 		http.Error(w, "Error inserting into database", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	fmt.Fprintf(w, "POST done. Inserted ID: %d", pk)
-// }
 
 func PostHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	if r.Method != http.MethodPost {
@@ -123,9 +125,9 @@ func PostHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	fmt.Fprintf(w, "POST done. Inserted ID: %d", pk)
 }
 
-func createProductTable(db *sql.DB) {
+func createPersonTable(db *sql.DB) {
 	query := `
- CREATE TABLE IF NOT EXISTS product (
+ CREATE TABLE IF NOT EXISTS person (
   id SERIAL PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   age INTEGER NOT NULL
